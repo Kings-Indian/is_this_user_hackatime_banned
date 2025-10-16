@@ -1,0 +1,222 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Slack ID Ban Checker</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            max-width: 900px;
+            margin: 0 auto;
+            padding: 20px;
+            background-color: #f5f5f5;
+        }
+        .container {
+            background-color: white;
+            padding: 25px;
+            border-radius: 8px;
+            box-shadow: 0 2px 10px rgba(0,0,0,0.1);
+        }
+        h1 {
+            color: #333;
+            text-align: center;
+            margin-bottom: 10px;
+        }
+        .instructions {
+            background-color: #f0f8ff;
+            padding: 15px;
+            border-radius: 5px;
+            margin-bottom: 20px;
+        }
+        textarea {
+            width: 100%;
+            height: 150px;
+            padding: 12px;
+            border: 1px solid #ddd;
+            border-radius: 4px;
+            font-family: monospace;
+            resize: vertical;
+            font-size: 14px;
+        }
+        button {
+            background-color: #4CAF50;
+            color: white;
+            border: none;
+            padding: 12px 24px;
+            font-size: 16px;
+            cursor: pointer;
+            border-radius: 4px;
+            margin: 5px;
+        }
+        button:hover {
+            background-color: #45a049;
+        }
+        #clearButton {
+            background-color: #f44336;
+        }
+        #clearButton:hover {
+            background-color: #d32f2f;
+        }
+        table {
+            width: 100%;
+            border-collapse: collapse;
+            margin-top: 20px;
+        }
+        th, td {
+            border: 1px solid #ddd;
+            padding: 12px;
+            text-align: left;
+        }
+        th {
+            background-color: #f2f2f2;
+        }
+        .banned {
+            background-color: #ffcccc;
+        }
+        .not-banned {
+            background-color: #e8f5e9;
+        }
+        .error {
+            background-color: #fff3e0;
+        }
+        .trust-red {
+            color: #d32f2f;
+            font-weight: bold;
+        }
+        .summary {
+            background-color: #e8f5e9;
+            padding: 15px;
+            border-radius: 5px;
+            margin-top: 20px;
+        }
+        .summary.banned-summary {
+            background-color: #ffebee;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1>Slack ID Ban Checker</h1>
+        
+        <div class="instructions">
+            <p><strong>How to use:</strong> Paste Slack IDs (one per line or comma-separated) and click "Check Banned Users".</p>
+            <p><strong>Note:</strong> A user is banned if their <code>trust_factor.trust_level</code> is "red".</p>
+        </div>
+        
+        <textarea id="userList" placeholder="Paste Slack IDs here:
+
+U1234567890
+U9876543210
+"></textarea>
+        
+        <div>
+            <button id="checkButton">Check Banned Users</button>
+            <button id="clearButton">Clear Results</button>
+        </div>
+        
+        <div id="results">
+            <table>
+                <thead>
+                    <tr>
+                        <th>Slack ID</th>
+                        <th>Status</th>
+                        <th>Trust Level</th>
+                    </tr>
+                </thead>
+                <tbody id="resultsBody">
+                </tbody>
+            </table>
+        </div>
+        
+        <div class="summary" id="summary" style="display: none;">
+            <h3>Summary:</h3>
+            <div id="summaryText"></div>
+        </div>
+    </div>
+
+    <script>
+        document.getElementById('checkButton').addEventListener('click', checkUsers);
+        document.getElementById('clearButton').addEventListener('click', clearResults);
+        
+        async function checkUsers() {
+            const userListText = document.getElementById('userList').value.trim();
+            if (!userListText) {
+                alert('Please enter at least one Slack ID');
+                return;
+            }
+            
+            const users = userListText.split(/[\n,]/)
+                .map(user => user.trim())
+                .filter(user => user.length > 0);
+            
+            const resultsBody = document.getElementById('resultsBody');
+            resultsBody.innerHTML = '';
+            
+            let bannedCount = 0;
+            let activeCount = 0;
+            
+            for (const user of users) {
+                try {
+                    const response = await fetch(`https://hackatime.hackclub.com/api/v1/users/${user}/stats`);
+                    const data = await response.json();
+                    
+                    let status, className, trustLevel;
+                    if (data.trust_factor?.trust_level === "red") {
+                        status = "BANNED";
+                        className = "banned";
+                        trustLevel = data.trust_factor.trust_level;
+                        bannedCount++;
+                    } else if (data.trust_factor) {
+                        status = "Active";
+                        className = "not-banned";
+                        trustLevel = data.trust_factor.trust_level;
+                        activeCount++;
+                    } else {
+                        status = "Error";
+                        className = "error";
+                        trustLevel = "N/A";
+                    }
+                    
+                    const row = document.createElement('tr');
+                    row.className = className;
+                    row.innerHTML = `
+                        <td>${user}</td>
+                        <td>${status}</td>
+                        <td class="${trustLevel === 'red' ? 'trust-red' : ''}">${trustLevel}</td>
+                    `;
+                    resultsBody.appendChild(row);
+                } catch (error) {
+                    const row = document.createElement('tr');
+                    row.className = 'error';
+                    row.innerHTML = `
+                        <td>${user}</td>
+                        <td>Error</td>
+                        <td>N/A</td>
+                    `;
+                    resultsBody.appendChild(row);
+                }
+            }
+            
+            const summary = document.getElementById('summary');
+            const summaryText = document.getElementById('summaryText');
+            
+            if (bannedCount > 0) {
+                summary.className = 'summary banned-summary';
+                summaryText.innerHTML = `<span class="trust-red">${bannedCount} banned user(s) found!</span>`;
+            } else {
+                summary.className = 'summary';
+                summaryText.innerHTML = `<span>No banned users found. ${activeCount} active users.</span>`;
+            }
+            
+            summary.style.display = 'block';
+        }
+        
+        function clearResults() {
+            document.getElementById('userList').value = '';
+            document.getElementById('resultsBody').innerHTML = '';
+            document.getElementById('summary').style.display = 'none';
+        }
+    </script>
+</body>
+</html>
